@@ -21,6 +21,9 @@
 #include "scene.h"
 #include "assembler.h"
 
+#include "preview.h"
+#include <cstring>
+
 using namespace std;
 
 //-------------------------------

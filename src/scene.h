@@ -42,7 +42,7 @@ public:
 //    }
 //}
 
-class Scene {
+class DeprecatedScene {
 public:
     thrust::device_vector<Geom*> geoms;
     thrust::device_vector<Material*> mats;
@@ -50,8 +50,8 @@ public:
     int light_size = 0;
     tinygltf::Model model;
     std::vector<glm::vec3> triangles;
-    Scene(const char* filename);
-    ~Scene() {
+    DeprecatedScene(const char* filename);
+    ~DeprecatedScene() {
         //FreePtrVector<<<1,1>>>(geoms);
         //FreePtrVector<<<1,1>>>(mats);
         //FreePtrVector(lights, lights.size());

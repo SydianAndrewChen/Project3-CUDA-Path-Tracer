@@ -1,10 +1,4 @@
 #include "assembler.h"
-#include "sceneStructs.h"
-#include <cuda_runtime.h>
-#include <cuda.h>
-#include <glm/gtc/quaternion.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
 
 template<typename T>
 __global__ void loadPrimitive(int childPrimitivesSize, int offset, Primitive** primitives, T* childPrimitives) {
@@ -29,7 +23,7 @@ __global__ void loadTriangle(int childPrimitivesSize, int offset, Primitive** pr
 	//}
 }
 
-void PrimitiveAssmbler::traverseNode(const tinygltf::Model& model, int nodeIndex, const glm::mat4x4 & parentTransform)
+void Scene::traverseNode(const tinygltf::Model& model, int nodeIndex, const glm::mat4x4 & parentTransform)
 {
     if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) {
         return;
@@ -51,7 +45,7 @@ void PrimitiveAssmbler::traverseNode(const tinygltf::Model& model, int nodeIndex
     }
 }
 
-void PrimitiveAssmbler::processMesh(const tinygltf::Model& model, const tinygltf::Mesh& mesh, const glm::mat4x4 & transform)
+void Scene::processMesh(const tinygltf::Model& model, const tinygltf::Mesh& mesh, const glm::mat4x4 & transform)
 {
     std::cout << "Loading mesh: " << mesh.name << std::endl;
 
@@ -110,7 +104,7 @@ void PrimitiveAssmbler::processMesh(const tinygltf::Model& model, const tinygltf
     }
 }
 
-void PrimitiveAssmbler::applyNodeTransform(const tinygltf::Node & node, glm::mat4x4& parentTransform)
+void Scene::applyNodeTransform(const tinygltf::Node & node, glm::mat4x4& parentTransform)
 {
     glm::mat4 localTransform(1.0f);
     glm::mat4 T(1.0f), R(1.0f), S(1.0f);
@@ -139,7 +133,29 @@ void PrimitiveAssmbler::applyNodeTransform(const tinygltf::Node & node, glm::mat
     parentTransform = parentTransform * localTransform;
 }
 
-void PrimitiveAssmbler::movePrimitivesToDevice()
+Scene::Scene(const char* filename)
+{
+    tinygltf::TinyGLTF loader;
+    std::string err;
+    std::string warn;
+    //bool success = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
+    bool success = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
+    if (!warn.empty()) {
+        std::cout << "Warn: " << warn << std::endl;
+    }
+    if (!err.empty()) {
+        std::cerr << "Error: " << err << std::endl;
+        assert(0);
+    }
+
+    if (!success) {
+        std::cerr << "Failed to load glTF model." << std::endl;
+        assert(0);
+    }
+    loadMaterials();
+}
+
+void Scene::movePrimitivesToDevice()
 {
     cudaMalloc(&dev_primitives, sizeof(Primitive*) * getPrimitiveSize());
     int offset = 0;
@@ -158,9 +174,9 @@ void PrimitiveAssmbler::movePrimitivesToDevice()
     //offset += spheres.size();
 }
 
-void PrimitiveAssmbler::assembleScenePrimitives(Scene* scene)
+void Scene::assembleScenePrimitives()
 {
-    auto model = scene->model;
+    //auto model = scene->model;
     auto initTransform = glm::mat4x4(1.0f);
     for (auto node : model.scenes[0].nodes) {
         traverseNode(model, node, initTransform);
@@ -207,14 +223,89 @@ void PrimitiveAssmbler::assembleScenePrimitives(Scene* scene)
                 triangle.uv1 = glm::vec2(uvData[indexData[i] * uvStride], uvData[indexData[i] * uvStride + 1]);
                 triangle.uv2 = glm::vec2(uvData[indexData[i + 1] * uvStride], uvData[indexData[i + 1] * uvStride + 1]);
                 triangle.uv3 = glm::vec2(uvData[indexData[i + 2] * uvStride], uvData[indexData[i + 2] * uvStride + 1]);
-                //auto index0 = indexData[i];
-                //auto index1 = indexData[i + 1];
-                //auto index2 = indexData[i + 2];
+
+                triangle.materialID = primitive.material;
+
                 triangles.push_back(triangle);
             }
         }
     }
     return;
+}
+
+void Scene::loadMaterials()
+{
+    for ( const auto & material:model.materials)
+    {
+        //BSDF* bsdf = nullptr;
+        BSDFStruct bsdfStruct;
+        if (material.emissiveFactor.size() > 0) {
+            auto ext = material.extensions.find("KHR_materials_emissive_strength");
+            float strength;
+            if (ext != material.extensions.end()) {
+                auto strengthObject = ext->second.Get<tinygltf::Value::Object>().find("emissiveStrength");
+                if (strengthObject != ext->second.Get<tinygltf::Value::Object>().end()) {
+					float strength = static_cast<float>(strengthObject->second.Get<double>());
+				}
+            }
+            //bsdf = new EmissionBSDF(strength * glm::vec3(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]));
+            bsdfStruct.reflectance = glm::vec3(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]);
+            bsdfStruct.strength = strength;
+            bsdfStruct.bsdfType = EMISSIVE;
+        }
+
+        else {
+			//bsdf = new DiffuseBSDF(glm::vec3(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]));
+            bsdfStruct.bsdfType = DIFFUSE;
+            bsdfStruct.reflectance = glm::vec3(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]);
+        }
+        //bsdfs.push_back(bsdf);
+        bsdfStructs.push_back(bsdfStruct);
+
+    }
+}
+
+
+__global__ void initBSDF(int size, BSDF** bsdfs, BSDFStruct * bsdfStructs) {
+    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+    if (index < size) {
+        BSDFType type = bsdfStructs[index].bsdfType;
+        //switch (type)
+        //{
+        //case UNIMPLEMENTED:
+        //    break;
+        //case DIFFUSE:
+        //    bsdfs[index] = new DiffuseBSDF(bsdfStructs[index].reflectance);
+        //    break;
+        //case SPECULAR:
+        //    assert(0);
+        //    break;
+        //case REFRACTIVE:
+        //    assert(0);
+        //    break;
+        //case MICROFACET:
+        //    assert(0);
+        //    break;
+        //case EMISSIVE:
+        //    bsdfs[index] = new EmissionBSDF(bsdfStructs[index].reflectance * bsdfStructs[index].strength);
+        //    break;
+        //default:
+        //    assert(0);
+        //    break;
+        //}
+        bsdfs[index]->debug();
+    }
+}
+
+void Scene::initBSDFs()
+{
+    cudaMalloc(&dev_bsdfs, bsdfStructs.size() * sizeof(BSDF*));
+    cudaMalloc(&dev_bsdfStructs, bsdfStructs.size() * sizeof(BSDFStruct));
+    cudaMemcpy(dev_bsdfStructs, bsdfStructs.data(), bsdfStructs.size() * sizeof(BSDFStruct), cudaMemcpyHostToDevice);
+    int blockSize = 128;
+    dim3 initBSDFBlocks((bsdfStructs.size() + (blockSize-1))/blockSize);
+    initBSDF<<<initBSDFBlocks, blockSize>>>(bsdfStructs.size(), dev_bsdfs, dev_bsdfStructs);
+    cudaFree(dev_bsdfStructs);
 }
 
 __global__ void freePrimitive(Primitive** primitives, int size) {
@@ -224,7 +315,7 @@ __global__ void freePrimitive(Primitive** primitives, int size) {
     }
 }
 
-void PrimitiveAssmbler::freeBuffer()
+void Scene::freeBuffer()
 {
     int blockSize = 128;
     dim3 loadPrimitiveBlock((triangles.size() + (blockSize - 1)) / blockSize);

@@ -211,7 +211,7 @@ int HostScene::loadMaterial(string materialid) {
     }
 }
 
-Scene::Scene(const char* filename)
+DeprecatedScene::DeprecatedScene(const char* filename)
 {
     tinygltf::TinyGLTF loader;
     std::string err;

@@ -1,9 +1,9 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include "sceneStructs.h"
 #include <glm/gtx/intersect.hpp>
 
-#include "sceneStructs.h"
 #include "utilities.h"
 
 /**
@@ -125,10 +125,10 @@ __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
     if (t1 < 0 && t2 < 0) {
         return -1;
     } else if (t1 > 0 && t2 > 0) {
-        t = min(t1, t2);
+        t = __min(t1, t2);
         outside = true;
     } else {
-        t = max(t1, t2);
+        t = __max(t1, t2);
         outside = false;
     }
 

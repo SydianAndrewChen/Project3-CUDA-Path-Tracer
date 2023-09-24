@@ -66,10 +66,14 @@ set(scene
     src/scene.h
     src/sceneStructs.h
     src/interactions.h
+    src/interactions.cpp
     src/intersections.h
+    src/intersections.cpp
     src/light.h
     src/scene.cpp
     src/light.cpp
+    src/bsdf.h
+    src/bsdf.cpp
 )
 
 set(core
@@ -137,9 +141,9 @@ source_group(Tinygltf FILES ${tinygltf})
 
 #add_subdirectory(src/ImGui)
 #add_subdirectory(stream_compaction)  # TODO: uncomment if using your stream compaction
-
-cuda_add_executable(${CMAKE_PROJECT_NAME} ${imgui} ${tinygltf} ${scene} ${core}  ${common})
+cuda_add_executable(${CMAKE_PROJECT_NAME}  ${core} ${imgui} ${tinygltf}  ${scene}  ${common})
 target_link_libraries(${CMAKE_PROJECT_NAME}
+	#scene
     ${LIBRARIES}
     #stream_compaction  # TODO: uncomment if using your stream compaction
     )

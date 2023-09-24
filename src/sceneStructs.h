@@ -4,8 +4,8 @@
 #include <vector>
 #include <cuda_runtime.h>
 #include "glm/glm.hpp"
-#include "utilities.h"
 #include "glm/gtx/intersect.hpp"
+#include "utilities.h"
 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 
@@ -22,7 +22,6 @@ struct Ray {
     __host__ __device__ glm::vec3 at(float t) const{
         return origin + direction * t;
     }
-
 };
 
 struct Geom {
@@ -54,6 +53,7 @@ struct Material {
     float indexOfRefraction;
     float emittance;
 };
+
 
 struct Camera {
     glm::ivec2 resolution;
@@ -156,6 +156,7 @@ public:
     glm::vec2 uv3;
     BoundingBox bb;
     glm::vec3 N;
+    int materialID;
     __host__ __device__ Triangle() {}
     __host__ __device__ Triangle(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3) : 
         p1(p1), p2(p2), p3(p3) {
