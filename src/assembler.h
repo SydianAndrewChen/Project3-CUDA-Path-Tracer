@@ -1,12 +1,12 @@
 #pragma once
 #include <vector>
-#include "scene.h"
 #include "sceneStructs.h"
 #include "bsdf.h"
 #include <cuda_runtime.h>
 #include <cuda.h>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include "tinygltf/tiny_gltf.h"
 
 class Scene {
     std::vector<Sphere> spheres;
@@ -19,8 +19,8 @@ class Scene {
     void processMesh(const tinygltf::Model& model, const tinygltf::Mesh& mesh, const glm::mat4x4 & parentTransform);
     tinygltf::Model model;
 
-    BSDF** dev_bsdfs;
 public:
+    BSDF** dev_bsdfs;
     Scene(const char* filename);
     std::vector<Triangle> triangles;
     void movePrimitivesToDevice();

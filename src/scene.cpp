@@ -6,12 +6,12 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-//// Define these only in *one* .cc file.
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-//// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
-#include "tinygltf/tiny_gltf.h"
+////// Define these only in *one* .cc file.
+//#define TINYGLTF_IMPLEMENTATION
+//#define STB_IMAGE_IMPLEMENTATION
+//#define STB_IMAGE_WRITE_IMPLEMENTATION
+////// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
+//#include "tinygltf/tiny_gltf.h"
 
 HostScene::HostScene(string filename) {
     cout << "Reading scene from " << filename << " ..." << endl;
@@ -213,21 +213,21 @@ int HostScene::loadMaterial(string materialid) {
 
 DeprecatedScene::DeprecatedScene(const char* filename)
 {
-    tinygltf::TinyGLTF loader;
-    std::string err;
-    std::string warn;
-    //bool success = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
-    bool success = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
-    if (!warn.empty()) {
-		std::cout << "Warn: " << warn << std::endl;
-	}
-    if (!err.empty()) {
-        std::cerr << "Error: " << err << std::endl;
-        assert(0);
-    }
+ //   tinygltf::TinyGLTF loader;
+ //   std::string err;
+ //   std::string warn;
+ //   //bool success = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
+ //   bool success = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
+ //   if (!warn.empty()) {
+	//	std::cout << "Warn: " << warn << std::endl;
+	//}
+ //   if (!err.empty()) {
+ //       std::cerr << "Error: " << err << std::endl;
+ //       assert(0);
+ //   }
 
-    if (!success) {
-        std::cerr << "Failed to load glTF model." << std::endl;
-        assert(0);
-    }
+ //   if (!success) {
+ //       std::cerr << "Failed to load glTF model." << std::endl;
+ //       assert(0);
+ //   }
 }

@@ -1,5 +1,11 @@
 #include "assembler.h"
 
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+//// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
+#include "tinygltf/tiny_gltf.h"
+
 template<typename T>
 __global__ void loadPrimitive(int childPrimitivesSize, int offset, Primitive** primitives, T* childPrimitives) {
     int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -48,7 +54,6 @@ void Scene::traverseNode(const tinygltf::Model& model, int nodeIndex, const glm:
 void Scene::processMesh(const tinygltf::Model& model, const tinygltf::Mesh& mesh, const glm::mat4x4 & transform)
 {
     std::cout << "Loading mesh: " << mesh.name << std::endl;
-
     for (const auto& primitive : mesh.primitives) {
         int p_size = mesh.primitives.size();
         const auto& indicesAccessor = model.accessors[primitive.indices];
@@ -73,6 +78,11 @@ void Scene::processMesh(const tinygltf::Model& model, const tinygltf::Mesh& mesh
 
         const size_t numIndices = indicesAccessor.count;
         glm::mat4x4 normalTransform = glm::transpose(glm::inverse(transform));
+        int materialID = primitive.material;
+        if (materialID < 0) {
+            materialID = 0;
+        }
+        printf("Material: %d\n", materialID);
         // Iterate through indices and create triangles
         //for (size_t i = 0; i < numIndices; i += 3) {
         for (size_t i = 0; i < numIndices; i += 3) {
@@ -99,6 +109,7 @@ void Scene::processMesh(const tinygltf::Model& model, const tinygltf::Mesh& mesh
             //auto index0 = indexData[i];
             //auto index1 = indexData[i + 1];
             //auto index2 = indexData[i + 2];
+            triangle.materialID = materialID;
             triangles.push_back(triangle);
         }
     }
@@ -182,55 +193,6 @@ void Scene::assembleScenePrimitives()
         traverseNode(model, node, initTransform);
     }
     return;
-    // Access the meshes and faces
-    for (const auto& mesh : model.meshes) {
-        for (const auto& primitive : mesh.primitives) {
-            int p_size = mesh.primitives.size();
-            const auto& indicesAccessor = model.accessors[primitive.indices];
-            const auto& positionsAccessor = model.accessors[primitive.attributes.at("POSITION")];
-            const auto& normalsAccessor = model.accessors[primitive.attributes.at("NORMAL")];
-            const auto& uvAccessor = model.accessors[primitive.attributes.at("TEXCOORD_0")];
-
-            const auto& indicesView = model.bufferViews[indicesAccessor.bufferView];
-            const auto& positionsView = model.bufferViews[positionsAccessor.bufferView];
-            const auto& normalsView = model.bufferViews[normalsAccessor.bufferView];
-            const auto& uvView = model.bufferViews[uvAccessor.bufferView];
-
-            // TODO: Dynamic type array according to componentType
-            const unsigned short* indexData = reinterpret_cast<const unsigned short*>(&model.buffers[indicesView.buffer].data[indicesAccessor.byteOffset + indicesView.byteOffset]);
-            const float* positionData = reinterpret_cast<const float*>(&model.buffers[positionsView.buffer].data[positionsAccessor.byteOffset + positionsView.byteOffset]);
-            const float* normalData = reinterpret_cast<const float*>(&model.buffers[normalsView.buffer].data[normalsAccessor.byteOffset + normalsView.byteOffset]);
-            const float* uvData = reinterpret_cast<const float*>(&model.buffers[uvView.buffer].data[uvAccessor.byteOffset + uvView.byteOffset]);
-
-            const size_t vertexStride = 3;
-            const size_t normalStride = 3;
-            const size_t uvStride = 3;
-
-            const size_t numIndices = indicesAccessor.count;
-
-            // Iterate through indices and create triangles
-            //for (size_t i = 0; i < numIndices; i += 3) {
-                for (size_t i = 0; i < numIndices; i +=3) {
-                Triangle triangle;
-                triangle.p1 = glm::vec3(positionData[indexData[i] * vertexStride], positionData[indexData[i] * vertexStride + 1], positionData[indexData[i] * vertexStride + 2]);
-                triangle.p2 = glm::vec3(positionData[indexData[i + 1] * vertexStride], positionData[indexData[i + 1] * vertexStride + 1], positionData[indexData[i + 1] * vertexStride + 2]);
-                triangle.p3 = glm::vec3(positionData[indexData[i + 2] * vertexStride], positionData[indexData[i + 2] * vertexStride + 1], positionData[indexData[i + 2] * vertexStride + 2]);
-
-                triangle.n1 = glm::vec3(normalData[indexData[i] * normalStride], normalData[indexData[i] * normalStride + 1], normalData[indexData[i] * normalStride + 2]);
-                triangle.n2 = glm::vec3(normalData[indexData[i + 1] * normalStride], normalData[indexData[i + 1] * normalStride + 1], normalData[indexData[i + 1] * normalStride + 2]);
-                triangle.n3 = glm::vec3(normalData[indexData[i + 2] * normalStride], normalData[indexData[i + 2] * normalStride + 1], normalData[indexData[i + 2] * normalStride + 2]);
-
-                triangle.uv1 = glm::vec2(uvData[indexData[i] * uvStride], uvData[indexData[i] * uvStride + 1]);
-                triangle.uv2 = glm::vec2(uvData[indexData[i + 1] * uvStride], uvData[indexData[i + 1] * uvStride + 1]);
-                triangle.uv3 = glm::vec2(uvData[indexData[i + 2] * uvStride], uvData[indexData[i + 2] * uvStride + 1]);
-
-                triangle.materialID = primitive.material;
-
-                triangles.push_back(triangle);
-            }
-        }
-    }
-    return;
 }
 
 void Scene::loadMaterials()
@@ -239,28 +201,29 @@ void Scene::loadMaterials()
     {
         //BSDF* bsdf = nullptr;
         BSDFStruct bsdfStruct;
-        if (material.emissiveFactor.size() > 0) {
+        if (*std::max_element(material.emissiveFactor.begin(), material.emissiveFactor.end()) > DBL_EPSILON) {
             auto ext = material.extensions.find("KHR_materials_emissive_strength");
             float strength;
             if (ext != material.extensions.end()) {
                 auto strengthObject = ext->second.Get<tinygltf::Value::Object>().find("emissiveStrength");
                 if (strengthObject != ext->second.Get<tinygltf::Value::Object>().end()) {
 					float strength = static_cast<float>(strengthObject->second.Get<double>());
+                    bsdfStruct.reflectance = glm::vec3(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]);
+                    bsdfStruct.strength = strength;
+                    bsdfStruct.bsdfType = EMISSIVE;
+                    bsdfStructs.push_back(bsdfStruct);
 				}
             }
             //bsdf = new EmissionBSDF(strength * glm::vec3(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]));
-            bsdfStruct.reflectance = glm::vec3(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]);
-            bsdfStruct.strength = strength;
-            bsdfStruct.bsdfType = EMISSIVE;
         }
 
         else {
 			//bsdf = new DiffuseBSDF(glm::vec3(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]));
             bsdfStruct.bsdfType = DIFFUSE;
             bsdfStruct.reflectance = glm::vec3(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]);
+            bsdfStructs.push_back(bsdfStruct);
         }
         //bsdfs.push_back(bsdf);
-        bsdfStructs.push_back(bsdfStruct);
 
     }
 }
@@ -270,30 +233,32 @@ __global__ void initBSDF(int size, BSDF** bsdfs, BSDFStruct * bsdfStructs) {
     int index = (blockIdx.x * blockDim.x) + threadIdx.x;
     if (index < size) {
         BSDFType type = bsdfStructs[index].bsdfType;
-        //switch (type)
-        //{
-        //case UNIMPLEMENTED:
-        //    break;
-        //case DIFFUSE:
-        //    bsdfs[index] = new DiffuseBSDF(bsdfStructs[index].reflectance);
-        //    break;
-        //case SPECULAR:
-        //    assert(0);
-        //    break;
-        //case REFRACTIVE:
-        //    assert(0);
-        //    break;
-        //case MICROFACET:
-        //    assert(0);
-        //    break;
-        //case EMISSIVE:
-        //    bsdfs[index] = new EmissionBSDF(bsdfStructs[index].reflectance * bsdfStructs[index].strength);
-        //    break;
-        //default:
-        //    assert(0);
-        //    break;
-        //}
-        bsdfs[index]->debug();
+        printf("bsdfStructs[index].bsdfType: %d\n", bsdfStructs[index].bsdfType);
+        printf("bsdfStructs[index].reflectance: %f, %f, %f\n", bsdfStructs[index].reflectance.x, bsdfStructs[index].reflectance.y, bsdfStructs[index].reflectance.z);
+        printf("bsdfStructs[index].strength: %f\n", bsdfStructs[index].strength);
+        switch (type)
+        {
+        case UNIMPLEMENTED:
+            break;
+        case DIFFUSE:
+            bsdfs[index] = new DiffuseBSDF(bsdfStructs[index].reflectance);
+            break;
+        case SPECULAR:
+            assert(0);
+            break;
+        case REFRACTIVE:
+            assert(0);
+            break;
+        case MICROFACET:
+            assert(0);
+            break;
+        case EMISSIVE:
+            bsdfs[index] = new EmissionBSDF(bsdfStructs[index].reflectance * bsdfStructs[index].strength);
+            break;
+        default:
+            assert(0);
+            break;
+        }
     }
 }
 

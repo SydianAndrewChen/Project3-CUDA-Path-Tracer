@@ -10,7 +10,6 @@
 #include "sceneStructs.h"
 #include "light.h"
 #include <thrust/device_vector.h>
-#include "tinygltf/tiny_gltf.h"
 
 
 using namespace std;
@@ -25,7 +24,7 @@ private:
     void initLightFromObject();
 public:
     HostScene(string filename);
-    ~HostScene();
+    ~HostScene() {};
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
@@ -48,7 +47,6 @@ public:
     thrust::device_vector<Material*> mats;
     Light ** lights;
     int light_size = 0;
-    tinygltf::Model model;
     std::vector<glm::vec3> triangles;
     DeprecatedScene(const char* filename);
     ~DeprecatedScene() {

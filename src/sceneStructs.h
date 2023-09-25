@@ -196,6 +196,7 @@ public:
                 r.max_t = t;
                 isect->t = t;
                 //isect->primitive = this;
+                isect->materialId = materialID;
                 isect->surfaceNormal = bary.x * n1 + bary.y * n2 + bary.z * n3;
             }
         }

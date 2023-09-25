@@ -18,7 +18,7 @@
 #include "bsdf.h"
 #include "intersections.h"
 #include "interactions.h"
-#include "bxdf.h"
+#include "bsdf.h"
 #include "light.h"
 #include "assembler.h"
 //#include "utilities.cuh"
@@ -459,6 +459,9 @@ __global__ void shadeFakeMaterial(
 	, Material* materials
 	, Geom * geoms
 	, int geoms_size
+	, Triangle * triangles
+	, int triangle_size
+	, BSDF ** bsdfs
 )
 {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -474,16 +477,24 @@ __global__ void shadeFakeMaterial(
 			thrust::uniform_real_distribution<float> u01(0, 1);
 
 			Material material = materials[intersection.materialId];
-			//pathSegment.color = intersection.surfaceNormal;
-			pathSegment.color = glm::vec3(1.0, 1.0, 1.0);
-			return;
+			BSDF* intersectBSDF;
+			//if (intersection.materialId == 0) {
+			//	bsdf = bsdfs[intersection.materialId];
+			//	//bsdf->debug();
+			//	pathSegment.color = bsdf->get_debug_color();
+			//}
+			////pathSegment.color = intersection.surfaceNormal;
+			//else pathSegment.color = glm::vec3(1.0, 1.0, 1.0);
+			intersectBSDF = bsdfs[intersection.materialId];
+			//printf("intersection.materialId: %d pathSegment.color: %f %f %f\n", intersection.materialId, pathSegment.color[0], pathSegment.color[1], pathSegment.color[2]);
+			//return;
 			glm::vec3 materialColor = material.color;
 
 			// If the material indicates that the object was a light, "light" the ray
-			if (material.emittance > 0.0f) {
+			if (intersectBSDF->bsdfType == BSDFType::EMISSIVE) {
 				pathSegments[idx].remainingBounces = 0;
 				//pathSegments[idx].color *= (materialColor * material.emittance);
-				pathSegment.color += (materialColor * material.emittance * pathSegment.constantTerm);
+				pathSegment.color += (intersectBSDF->get_emission() * pathSegment.constantTerm);
 			}
 			// Otherwise, do some pseudo-lighting computation. This is actually more
 			// like what you would expect from shading in a rasterizer like OpenGL.
@@ -495,43 +506,45 @@ __global__ void shadeFakeMaterial(
 				glm::vec3 intersect = pathSegments[idx].ray.at(intersection.t);
 				//glm::vec3 localNormal = w2o * intersection.surfaceNormal;
 				//pathSegments[idx].color = localNormal;
-				glm::vec3 bsdf = materialColor * INV_PI; // Hard coded for now
+				glm::vec3 bsdf = intersectBSDF->f(glm::vec3(), glm::vec3()) * INV_PI; // Hard coded for now
 				glm::vec3 L_direct;
 				float pdf;
 				/* Estimate one bounce direct lighting */
-				int n_sample = 10;
-				int n_valid_sample = 0;
-				for (size_t i = 0; i < n_sample; i++)
-				{
-					glm::vec3 wo = hemiSphereRandomSample(rng, &pdf);
-					float cosineTerm = abs(wo.z);
-					Ray one_bounce_ray;
-				
-					one_bounce_ray.direction = o2w * wo;
-					one_bounce_ray.origin = intersect;
-					ShadeableIntersection oneBounceIntersection;
-					computeIntersectionsCore(geoms, geoms_size, one_bounce_ray, oneBounceIntersection);
-					if (oneBounceIntersection.t > EPSILON){
-						auto oneBounceMat = materials[oneBounceIntersection.materialId];
-						if (oneBounceMat.emittance > 0.0f) {
-							n_valid_sample++;
-							//pathSegments[idx].color = glm::vec3(1.0f);
-							auto Li = oneBounceMat.emittance * oneBounceMat.color;
+				//int n_sample = 10;
+				//int n_valid_sample = 0;
+				//for (size_t i = 0; i < n_sample; i++)
+				//{
+				//	glm::vec3 wo = hemiSphereRandomSample(rng, &pdf);
+				//	float cosineTerm = abs(wo.z);
+				//	Ray one_bounce_ray;
+				//
+				//	one_bounce_ray.direction = o2w * wo;
+				//	one_bounce_ray.origin = intersect;
+				//	ShadeableIntersection oneBounceIntersection;
+				//	intersectCore(triangles, triangle_size, one_bounce_ray, oneBounceIntersection);
+				//	if (oneBounceIntersection.t > EPSILON){
+				//		auto oneBounceMat = bsdfs[oneBounceIntersection.materialId];
+				//		if (oneBounceMat->bsdfType == BSDFType::EMISSIVE) {
+				//			n_valid_sample++;
+				//			//pathSegments[idx].color = glm::vec3(1.0f);
+				//			auto Li = oneBounceMat->get_emission();
 
-							// TODO: Figure out why is it still not so similar to the reference rendered image?
-							//		May be checkout the light propogation chapter of pbrt to find out how we use direct light estimation?
-							//L_direct += Li * bsdf * cosineTerm / pdf;
-							L_direct += Li * bsdf * cosineTerm;
-						}
-					}
-				}
+				//			// TODO: Figure out why is it still not so similar to the reference rendered image?
+				//			//		May be checkout the light propogation chapter of pbrt to find out how we use direct light estimation?
+				//			//L_direct += Li * bsdf * cosineTerm / pdf;
+				//			L_direct += Li * bsdf * cosineTerm;
+				//		}
+				//	}
+				//}
 
-				float one_over_n = 1.0f / (n_valid_sample + 1);
-				pathSegment.color += (L_direct * pathSegment.constantTerm * one_over_n);
-				
+				//float one_over_n = 1.0f / (n_valid_sample + 1);
+				////pathSegment.color = glm::vec3(1.0f);
+				//pathSegment.color += (L_direct * pathSegment.constantTerm * one_over_n);
+				//
 				glm::vec3 wo = hemiSphereRandomSample(rng, &pdf);
 				float cosineTerm = abs(wo.z);
-				pathSegment.constantTerm *= (bsdf * cosineTerm * one_over_n / pdf);
+				//pathSegment.constantTerm *= (bsdf * cosineTerm * one_over_n / pdf);
+				pathSegment.constantTerm *= (bsdf * cosineTerm / pdf);
 				
 				pathSegment.ray.origin = intersect;
 				pathSegment.ray.direction = o2w * wo;
@@ -642,6 +655,8 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 
 		// clean shading chunks
 		cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
+		printf("After cudaMemset!\n");
+
 
 		// tracing
 		dim3 numblocksPathSegmentTracing = (num_paths + blockSize1d - 1) / blockSize1d;
@@ -656,7 +671,6 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 
 		int primitiveSize = pa->getPrimitiveSize();
 		checkCUDAError("getPrimitiveSize");
-
 		intersect << <numblocksPathSegmentTracing, blockSize1d >> > (
 			depth
 			, num_paths
@@ -686,19 +700,23 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 			dev_paths,
 			dev_materials,
 			dev_geoms, 
-			hst_scene->geoms.size()
+			hst_scene->geoms.size(),
+			dev_triangles,
+			pa->triangles.size(),
+			pa->dev_bsdfs
 			);
-		
+
 		// Use dev_paths for compaction result
 		// check if compacted dev_intersections has zero element, if it is, then iteraionComplete should be true.
 		// If no, then we might be able to store the pixel that has not finished dev_intersection to largely decrease the number 
 		// of pixels that are required to continue raytracing.
+		
 		dev_path_end = thrust::partition(thrust::device, dev_paths, dev_path_end, HasHit());
 		num_paths = dev_path_end - dev_paths;
 		
 		//iterationComplete = (--constDepth == 0); // TODO: should be based off stream compaction results.
-		//iterationComplete = (num_paths == 0); // TODO: should be based off stream compaction results.
-		 iterationComplete = (true);
+		iterationComplete = (num_paths == 0); // TODO: should be based off stream compaction results.
+		 //iterationComplete = (true);
 		if (guiData != NULL)
 		{
 			guiData->TracedDepth = depth;
