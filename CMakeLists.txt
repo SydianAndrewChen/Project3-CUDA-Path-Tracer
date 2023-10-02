@@ -81,6 +81,8 @@ set(scene
     src/scene.cpp
     src/bvh.h
     src/bvh.cpp
+    src/camera.h
+    src/camera.cpp
 )
 
 set(core

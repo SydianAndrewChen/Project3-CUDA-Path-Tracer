@@ -31,6 +31,7 @@ Scene::Scene(const char* filename)
     initTextures();
     initBSDFs();
     initTriangles();
+    initCamera();
 }
 
 void Scene::initTriangles()
@@ -54,18 +55,17 @@ void Scene::initBSDFs() {
             if (ext != material.extensions.end()) {
                 auto strengthObject = ext->second.Get<tinygltf::Value::Object>().find("emissiveStrength");
                 if (strengthObject != ext->second.Get<tinygltf::Value::Object>().end()) {
+                    bsdfStruct.bsdfType = EMISSIVE;
                     float strength = static_cast<float>(strengthObject->second.Get<double>());
                     bsdfStruct.emissiveFactor = glm::vec3(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]);
                     bsdfStruct.strength = strength;
-                    bsdfStruct.bsdfType = EMISSIVE;
                     bsdfStructs.push_back(bsdfStruct);
                 }
             }
             //bsdf = new EmissionBSDF(strength * glm::vec3(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]));
         }
 		else if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
-			//bsdf = new DiffuseBSDF(glm::vec3(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]));
-			bsdfStruct.bsdfType = MICROFACET;
+            bsdfStruct.bsdfType = MICROFACET;
 			bsdfStruct.reflectance = glm::vec3(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]);
 			bsdfStruct.baseColorTextureID = material.pbrMetallicRoughness.baseColorTexture.index;
 			bsdfStruct.metallicRoughnessTextureID = material.pbrMetallicRoughness.metallicRoughnessTexture.index;
@@ -74,6 +74,16 @@ void Scene::initBSDFs() {
             bsdfStruct.ior = 1.5f;
 			bsdfStructs.push_back(bsdfStruct);
 		}
+        else if (/* TODO: Add condition for specular material here */false) {
+            bsdfStruct.bsdfType = SPECULAR;
+            bsdfStruct.reflectance = glm::vec3(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]);
+            bsdfStruct.baseColorTextureID = material.pbrMetallicRoughness.baseColorTexture.index;
+            bsdfStruct.metallicRoughnessTextureID = material.pbrMetallicRoughness.metallicRoughnessTexture.index;
+            bsdfStructs.push_back(bsdfStruct);
+        }
+        else if ( /* TODO: Refraction */ false) {
+
+        }
         else {
             //bsdf = new DiffuseBSDF(glm::vec3(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]));
             bsdfStruct.bsdfType = DIFFUSE;
@@ -111,6 +121,14 @@ void Scene::initTextures()
         case GLTFDataType::GLTF_DATA_TYPE_UNSIGNED_BYTE:
             textureData = image.image;
             break;
+        case GLTFDataType::GLTF_DATA_TYPE_UNSIGNED_SHORT:
+            for (size_t i = 0; i < image.image.size(); i++)
+            {
+                //printf("image.image: %d\n", image.image[i]);
+                textureData.push_back(static_cast<unsigned char>(image.image[i]));
+            }
+            //assert(0);
+            break;
         default:
             /* Unsupported data type! */
             assert(0);
@@ -123,6 +141,30 @@ void Scene::initTextures()
         texture.nrChannels = component;
         textures.push_back(texture);
     }
+}
+
+void Scene::initCamera()
+{
+    if (model.cameras.size() == 0) {
+        printf("WARNING: NO CAMERA FOUND IN THE MODEL\n");
+    }
+    else if (model.cameras[0].type != "perspective"){
+		printf("ERROR: Only perspective camera is supported for now\n");
+		assert(0);
+	}
+    else {
+        auto sceneCamera = model.cameras[0].perspective;
+        auto aspectRatio = sceneCamera.aspectRatio;
+        auto yfov = sceneCamera.yfov;
+        auto f = 1.0f / tan(yfov * 0.5f);
+        auto znear = sceneCamera.znear;
+        auto zfar = sceneCamera.zfar;
+        camera.resolution = glm::vec2(800, 800);
+        
+    }
+
+
+
 }
 
 void Scene::traverseNode(const tinygltf::Model& model, int nodeIndex, const glm::mat4x4 & parentTransform)
@@ -139,6 +181,10 @@ void Scene::traverseNode(const tinygltf::Model& model, int nodeIndex, const glm:
     if (node.mesh >= 0) {
         const auto& mesh = model.meshes[node.mesh];
         processMesh(model, mesh, nodeTransform);
+    }
+    else if (node.camera >= 0) {
+        const auto& sceneCamera = model.cameras[node.camera];
+        processCamera(model, sceneCamera, nodeTransform);
     }
 
     // Recursively process child nodes
@@ -226,6 +272,36 @@ void Scene::processMesh(const tinygltf::Model& model, const tinygltf::Mesh& mesh
 
             triangles.push_back(triangle);
         }
+    }
+}
+
+void Scene::processCamera(const tinygltf::Model& model, const tinygltf::Camera& sceneCamera, const glm::mat4x4& parentTransform)
+{
+    if (sceneCamera.type != "perspective") {
+        printf("ERROR: Only perspective camera is supported for now\n");
+        assert(0);
+    }
+    else {
+        auto sceneCamera = model.cameras[0].perspective;
+        auto aspectRatio = sceneCamera.aspectRatio;
+        auto yfov = sceneCamera.yfov;
+        auto f = 1.0f / tan(yfov * 0.5f);
+        auto znear = sceneCamera.znear;
+        auto zfar = sceneCamera.zfar;
+        camera.resolution = glm::vec2(800, 800);
+        camera.fov = glm::vec2(yfov * sceneCamera.aspectRatio, yfov) * 90.0f;
+        camera.position = glm::vec3(parentTransform * glm::vec4(0, 0, 0, 1));
+        camera.view = glm::normalize(glm::vec3(parentTransform * glm::vec4(0,0,1,0)));
+        if (abs(glm::dot(camera.view, glm::vec3(0, 1, 0))) < EPSILON) {
+            camera.up = glm::vec3(0, 0, 1);
+        }
+        else {
+			camera.up = glm::vec3(0, 1, 0);
+        }
+        camera.right = glm::normalize(glm::cross(camera.view, camera.up));
+        camera.up = glm::normalize(glm::cross(camera.view, camera.right));
+
+        camera.pixelLength = 2.0f * glm::vec2(1.0f / camera.resolution.x, 1.0f / camera.resolution.y);
     }
 }
 

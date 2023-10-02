@@ -12,7 +12,7 @@ enum BSDFType {
     REFRACTIVE = 2,
     MICROFACET = 3,
     EMISSIVE = 4,
-    DISNEY= 5
+    GLOSSY = 5,
 
 };
 

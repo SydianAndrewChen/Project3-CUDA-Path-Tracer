@@ -7,6 +7,7 @@
 #include "utilities.h"
 #include "glm/gtx/intersect.hpp"
 #include "textureStruct.h"
+#include "camera.h"
 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 
@@ -56,7 +57,7 @@ struct Material {
     float emittance;
 };
 
-struct Camera {
+struct DepCamera {
     glm::ivec2 resolution;
     glm::vec3 position;
     glm::vec3 lookAt;
@@ -68,6 +69,7 @@ struct Camera {
 };
 
 struct RenderState {
+    DepCamera depCamera;
     Camera camera;
     unsigned int iterations;
     int traceDepth;

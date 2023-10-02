@@ -18,8 +18,8 @@ project, and we will not be able to grade you without a good README.
 
 - [ ] Core
     - [x] G Buffer
+    - [x] Sort by material
     - [ ] Russian Roulette
-    - [ ] Sort by material
 
 - [ ] More BSDF
     - [x] Diffuse
@@ -150,6 +150,7 @@ Scene with 1k faces
     - [x] Metal Fresnel hack
     - [ ] Conductor
         - [ ] After mixing, need to consider how to sample
+
 - [x] Camera 
     - [x] Antialiasing
 
@@ -158,3 +159,30 @@ Scene with 1k faces
         - CPU only for now
         - [ ] Figure out how to build `oidn` for cuda
     - [ ] Integrate it into project
+
+- [x] Sort by shader
+    - No speedup observed?
+
+10.1
+
+- [ ] Reflective
+- [ ] Refractive
+
+- [ ] Camera refactor
+    - [ ] Abstract the camera class
+    - [ ] Export camera from gltf
+
+- [ ] Field of depth
+
+
+- [ ] Light refactor
+    - [ ] Implement a light class
+        - [ ] Consider how to make it compatible with emissive bsdfs
+
+- [ ] Material refactor
+    - [ ] May need to refactor material as a combination of different bsdfs
+        - according to pbrt
+
+
+- [ ] Primitve refactor
+    - [ ] Support more primitive besdies triangles(not so urgent)

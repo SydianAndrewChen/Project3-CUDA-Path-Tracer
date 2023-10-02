@@ -97,7 +97,7 @@ int HostScene::loadGeom(string objectid) {
 int HostScene::loadCamera() {
     cout << "Loading Camera ..." << endl;
     RenderState &state = this->state;
-    Camera &camera = state.camera;
+    DepCamera &camera = state.depCamera;
     float fovy;
 
     //load static properties

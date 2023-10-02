@@ -22,6 +22,7 @@
 #include "bsdf.h"
 #include "bvh.h"
 #include "texture.h"
+#include "camera.h"
 
 //#include "utilities.cuh"
 
@@ -93,7 +94,8 @@ static glm::vec3* dev_image = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 static Triangle* dev_triangles= nullptr;
-static Scene * pa = new Scene("..\\scenes\\pathtracer_test_microfacet.glb");
+//static Scene* pa = new Scene("..\\scenes\\pathtracer_dragon.glb");
+static Scene * pa;
 static BSDFStruct * dev_bsdfStructs = nullptr;
 static BVHAccel * bvh = nullptr;
 static BVHNode* dev_bvhNodes = nullptr;
@@ -148,7 +150,7 @@ __global__ void initBSDFWithTextures(BSDFStruct* bsdfStructs, Texture* texture, 
 	}
 }
 
-void pathtraceInitBeforeMainLoop() {
+void pathtraceInitBeforeMainLoop(Scene * pa) {
 
 	// TODO: initialize any extra device memeory you need
 
@@ -194,11 +196,11 @@ void pathtraceInitBeforeMainLoop() {
 
 }
 
-void pathtraceInit(HostScene* scene) {
-	
+void pathtraceInit(HostScene* scene, Scene * _pa) {
+	pa = _pa;
 	hst_scene = scene;
 
-	const Camera& cam = hst_scene->state.camera;
+	const DepCamera& cam = hst_scene->state.depCamera;
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
 
 	cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
@@ -240,7 +242,7 @@ void pathtraceFree() {
 	checkCUDAError("pathtraceFree");
 }
 
-void pathtraceFreeAfterMainLoop() {
+void pathtraceFreeAfterMainLoop(Scene * pa) {
 	cudaFree(dev_triangles);
 	cudaFree(dev_bsdfStructs);
 	cudaFree(dev_textureInfos);
@@ -259,31 +261,52 @@ void pathtraceFreeAfterMainLoop() {
 * motion blur - jitter rays "in time"
 * lens effect - jitter ray origin positions based on a lens
 */
-__global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, PathSegment* pathSegments)
+__global__ void generateRayFromCamera(DepCamera cam, Camera camera, int iter, int traceDepth, PathSegment* pathSegments)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	if (x < cam.resolution.x && y < cam.resolution.y) {
-		int index = x + (y * cam.resolution.x);
+	if (x < camera.resolution.x && y < camera.resolution.y) {
+		int index = x + (y * camera.resolution.x);
 		PathSegment& segment = pathSegments[index];
 
-		segment.ray.origin = cam.position;
+		segment.ray.origin = camera.position;
 		segment.color = glm::vec3(0.0f, 0.0f, 0.0f);
 
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
-		thrust::random::uniform_real_distribution<float> u01(0,1);
-		glm::vec2 jitter(u01(rng)-0.5f, u01(rng)-0.5f);
+		thrust::random::uniform_real_distribution<float> u01(0, 1);
+		glm::vec2 jitter(u01(rng) - 0.5f, u01(rng) - 0.5f);
 		// TODO: implement antialiasing by jittering the ray
-		segment.ray.direction = glm::normalize(cam.view
-			- cam.right * cam.pixelLength.x * ((float)x + jitter[0] - (float)cam.resolution.x * 0.5f)
-			- cam.up * cam.pixelLength.y * ((float)y + jitter[1] - (float)cam.resolution.y * 0.5f)
+		segment.ray.direction = glm::normalize(camera.view
+			- camera.right * camera.pixelLength.x * ((float)x + jitter[0] - (float)camera.resolution.x * 0.5f)
+			- camera.up * camera.pixelLength.y * ((float)y + jitter[1] - (float)camera.resolution.y * 0.5f)
 		);
 
 		segment.pixelIndex = index;
 		segment.remainingBounces = traceDepth;
 		segment.constantTerm = glm::vec3(1.0f, 1.0f, 1.0f);
 	}
+
+	//if (x < cam.resolution.x && y < cam.resolution.y) {
+	//	int index = x + (y * cam.resolution.x);
+	//	PathSegment& segment = pathSegments[index];
+
+	//	segment.ray.origin = cam.position;
+	//	segment.color = glm::vec3(0.0f, 0.0f, 0.0f);
+
+	//	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+	//	thrust::random::uniform_real_distribution<float> u01(0,1);
+	//	glm::vec2 jitter(u01(rng)-0.5f, u01(rng)-0.5f);
+	//	// TODO: implement antialiasing by jittering the ray
+	//	segment.ray.direction = glm::normalize(cam.view
+	//		- cam.right * cam.pixelLength.x * ((float)x + jitter[0] - (float)cam.resolution.x * 0.5f)
+	//		- cam.up * cam.pixelLength.y * ((float)y + jitter[1] - (float)cam.resolution.y * 0.5f)
+	//	);
+
+	//	segment.pixelIndex = index;
+	//	segment.remainingBounces = traceDepth;
+	//	segment.constantTerm = glm::vec3(1.0f, 1.0f, 1.0f);
+	//}
 }
 
 //TODO: Change to BVH in future!
@@ -483,7 +506,16 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 	checkCUDAError("before generate camera ray");
 
 	const int traceDepth = hst_scene->state.traceDepth;
-	const Camera& cam = hst_scene->state.camera;
+	const DepCamera& cam = hst_scene->state.depCamera;
+	Camera& camera = pa->camera;
+	camera.fov = cam.fov;
+	camera.pixelLength = cam.pixelLength;
+	//camera.position = cam.position;
+	//camera.view = cam.view;
+	//camera.up = cam.up;
+	//camera.right = cam.right;
+	camera.resolution = cam.resolution;
+
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
 
 	// 2D block for generating ray from camera
@@ -526,7 +558,7 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 
 	// TODO: perform one iteration of path tracing
 
-	generateRayFromCamera << <blocksPerGrid2d, blockSize2d >> > (cam, iter, traceDepth, dev_paths);
+	generateRayFromCamera << <blocksPerGrid2d, blockSize2d >> > (cam, camera, iter, traceDepth, dev_paths);
 	checkCUDAError("generate camera ray");
 	int depth = 0;
 	PathSegment* dev_path_end = dev_paths + pixelcount;
@@ -637,6 +669,7 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 			dev_bvhNodes,
 			bvh->nodes.size()
 			);
+		cudaDeviceSynchronize();
 
 		checkCUDAError("shadeMaterial failed\n");
 		// Use dev_paths for compaction result

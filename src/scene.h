@@ -10,6 +10,7 @@
 #include "sceneStructs.h"
 #include "bsdfStruct.h"
 #include "textureStruct.h"
+#include "camera.h"
 
 enum GLTFDataType {
 	GLTF_DATA_TYPE_SIGNED_BYTE = 5120,
@@ -27,9 +28,12 @@ class Scene {
     void traverseNode(const tinygltf::Model& model, int nodeIndex, const glm::mat4x4 & localTransform);
 
     void processMesh(const tinygltf::Model& model, const tinygltf::Mesh& mesh, const glm::mat4x4 & parentTransform);
+    void processCamera(const tinygltf::Model & model, const tinygltf::Camera & sceneCamera, const glm::mat4x4 & parentTransform);
     tinygltf::Model model;
 public:
     Scene(const char * filename);
+    RenderState state;
+    Camera camera;
     std::vector<Triangle> triangles;
     std::vector<BSDFStruct> bsdfStructs;
     std::vector<TextureInfo> textures;
@@ -42,6 +46,7 @@ public:
     void initTriangles();
     void initBSDFs();
     void initTextures();
+    void initCamera();
 };
 
 

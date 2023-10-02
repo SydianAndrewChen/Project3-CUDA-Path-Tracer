@@ -129,17 +129,24 @@ __device__ glm::vec3 f(BSDFStruct& bsdfStruct, const glm::vec3& wo, glm::vec3& w
         else {
             metallicRoughness = glm::vec2(bsdfStruct.metallicFactor, bsdfStruct.roughnessFactor);
         }
-        auto F = microfacetBSDF_F(normalize(wi + wo), bsdfStruct.ior, baseColor, metallicRoughness.x);
+        auto h = glm::normalize(wo + wi);
+        auto F = microfacetBSDF_F(h, bsdfStruct.ior, baseColor, metallicRoughness.x);
         auto alpha = roughnessToAlpha(metallicRoughness.y);
-        auto D = microfacetBSDF_D(normalize(wi + wo), alpha);
+        auto D = microfacetBSDF_D(h, alpha);
         auto G = microfacetBSDF_G(wo, wi, alpha);
         auto result = baseColor * F * D * G / (4.0f * wo.z * wi.z);
         //printf("F: %f, D: %f, G: %f\n", F, D, G);
         //printf("result: %f, %f, %f\n", result.x, result.y, result.z);
-        return result;
-        //return baseColor * INV_PI;
+        //return result;
+        return baseColor * INV_PI;
     case EMISSIVE:
         return bsdfStruct.emissiveFactor * bsdfStruct.strength;
+    case SPECULAR:
+        if (bsdfStruct.baseColorTextureID != -1) {
+            return sampleTextureRGB(*bsdfStruct.baseColorTexture, uv) * INV_PI;
+        }
+        else
+            return bsdfStruct.reflectance * INV_PI;
     default:
         printf("BSDF not implemented!\n");
         assert(0);
@@ -163,23 +170,31 @@ __device__ glm::vec3 sample_f(BSDFStruct& bsdfStruct, const glm::vec3& wo, glm::
         return f(bsdfStruct, wo, wi, uv);
 
         auto s = hemiSphereRandomSample(rng, pdf);
-        float alpha = roughnessToAlpha(bsdfStruct.roughnessFactor);
+        float alpha = bsdfStruct.roughnessFactor * bsdfStruct.roughnessFactor;
         auto theta_h = atan(sqrt(-alpha * alpha * log(1 - s.x)));
         auto phi_h = 2 * PI * s.y;
-        glm::vec3 h(sin(theta_h) * cos(phi_h), sin(theta_h) * sin(phi_h), cos(theta_h));
+        auto sin_theta_h = sin(theta_h);
+        auto cos_theta_h = cos(theta_h);
+        glm::vec3 h(sin_theta_h * cos(phi_h), sin_theta_h * sin(phi_h), cos_theta_h);
         auto proj = dot(wo, h) * h;
         wi = 2.0f * proj - wo;
         if (wi.z < 0) return glm::vec3();
 
-        auto p_theta = 2 * sin(theta_h) * exp(-pow(tan(theta_h) / alpha, 2)) / (alpha * alpha * pow(cos(theta_h), 3));
-        auto p_phi = 1. / (2 * PI);
-        auto p_h = p_theta * p_phi / sin(theta_h);
+        auto p_theta = 2 * sin_theta_h * exp(-pow((sin_theta_h/cos_theta_h) / alpha, 2)) / (alpha * alpha * pow(cos_theta_h, 3));
+        auto p_phi = INV_2PI;
+        auto p_h = p_theta * p_phi / sin_theta_h;
         *pdf = p_h / (4 * dot(wi, h));
         
         return f(bsdfStruct, wo, wi, uv);
         
     case EMISSIVE:
         return f(bsdfStruct, wo, wi, uv);
+    case SPECULAR:
+		wi = wo;
+		wi.x = -wi.x;
+		wi.y = -wi.y;
+        *pdf = 0.1f;
+		return f(bsdfStruct, wo, wi, uv);
     default:
         return glm::vec3();
         break;
